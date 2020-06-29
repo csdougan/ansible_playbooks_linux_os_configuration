@@ -1,0 +1,24 @@
+---
+# tasks file for linux_os_baseConfig
+
+- name: Include woking non-production vars
+  include_vars:
+    file: ./vars/nonprod_dc.yml
+  when:
+   - ansible_local.system_metadata.location == "nonprod_dc"
+   - ansible_local.system_metadata.environment in nonprod_environments
+
+- name: Include woking production vars
+  include_vars:
+    file: ./vars/prod_dc.yml
+  when:
+   - ansible_local.system_metadata.location == "prod_dc"
+   - ansible_local.system_metadata.environment in prod_environments
+
+- include_tasks: ./update_hosts.yml
+
+- include_tasks: ./update_resolv.yml
+
+- include_tasks: ./register_satellite.yml
+
+- include_tasks: ./qualys.yml

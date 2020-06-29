@@ -1,0 +1,11 @@
+---
+# vars file for linux_os_baseConfig
+prod_environments:
+  - PRODUCTION
+  - PRODUCTIONDR
+nonprod_environments:
+  - NONPROD
+  - UAT
+  - SIT
+management_environments:
+  - MANAGEMENT

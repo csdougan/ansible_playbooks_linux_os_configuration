@@ -1,0 +1,122 @@
+- name: check if katello agent has already been installed
+  shell: "rpm -q katello-ca-consumer-{{ satelliteEndpoint }}"
+  failed_when: false
+  changed_when: false
+  register: katello_rpm_check 
+
+- debug:
+    var: katello_rpm_check
+
+- name: Install katello agent from RHS server
+  yum: 
+    name: "http://{{ satelliteEndpoint }}/pub/katello-ca-consumer-latest.noarch.rpm" 
+    state: present
+  when: katello_rpm_check.rc != 0
+
+- name: Check if subscribed to satellite
+  shell: subscription-manager status| grep -i current
+  register: subman_check
+  failed_when: false
+  changed_when: false
+
+- name: Subscribe to Satellite
+  block:
+  - debug:
+      msg: "Activationkey: {{ actKey }}"
+      
+  - redhat_subscription:
+      state: present
+      activationkey: "{{ actKey }}"
+      force_register: yes
+      org_id: Waitrose 
+    failed_when: false
+    register: check_my_var
+
+  - shell: subscription-manager attach --auto
+  when: subman_check.rc != 0
+
+- name: Ensure all repos are enabled via RHSM
+  rhsm_repository:
+    name: "{{ item }}"
+    state: enabled
+  with_items:
+    - "rhel-{{ ansible_distribution_major_version }}-server-satellite-tools-6.3-rpms"
+    - "rhel-{{ ansible_distribution_major_version }}-server-rpms"
+    - "rhel-server-rhscl-{{ ansible_distribution_major_version }}-rpms"
+    - "rhel-{{ ansible_distribution_major_version }}-server-extras-rpms"
+    - "rhel-{{ ansible_distribution_major_version }}-server-optional-rpms"
+
+- name: Ensure EPEL repos are disabled via RHSM
+  rhsm_repository:
+    name: "Waitrose_Fedora_EPEL_Fedora_EPEL_{{ ansible_distribution_major_version }}"
+    state: disabled
+
+- name: Install Agents
+  yum: 
+    name: ['katello-agent', 'puppet']
+    state: latest
+
+- name: Update grub2-tools to fix a later yum upgrade deadlock in RHEL7
+  yum: 
+    name: grub2-tools 
+    state: latest 
+    update_cache: yes
+  when:
+    - ansible_distribution == "RedHat"
+    - ansible_distribution_major_version == '7'
+
+- name: Enable goferd
+  service: 
+    name: goferd 
+    state: started 
+    enabled: yes
+
+- name: Run katello upload
+  command: katello-package-upload
+
+- name: Configure Puppet Agents
+  command: "{{ item }}"
+  with_items:
+    - puppet config set vardir /var/lib/puppet --section main
+    - puppet config set logdir /var/log/puppet --section main
+    - puppet config set rundir /var/run/puppet --section main
+    - puppet config set ssldir /var/lib/puppet/ssl --section main
+    - puppet config set waitforcert 300 --section agent
+    - puppet config set pluginsync true --section agent
+    - puppet config set report true --section agent
+    - puppet config set ignoreschedules true --section agent
+    - puppet config set daemon false --section agent
+    - "puppet config set ca_server {{ puppetHost }} --section agent"
+    - "puppet config set certname {{ ansible_hostname + '.' + dnsSuffix }} --section agent"
+    - "puppet config set environment {{ puppetEnv }} --section agent"
+    - "puppet config set server {{ puppetHost }} --section agent"
+
+- name: check for puppet run
+  stat: path=/var/lib/puppet/state/agent_catalog_run.lock
+  register: puppetRun
+
+- name: Puppet run
+  puppet:
+  when: puppetRun.stat.exists == false
+
+- name: check for puppet run (again)
+  stat: path=/var/lib/puppet/state/agent_catalog_run.lock
+  register: puppetRun
+
+- name: Puppet run (again)
+  puppet:
+  when: puppetRun.stat.exists == false
+
+- name: Disable the puppet agent for now
+  service: 
+    name: puppet 
+    state: stopped
+    enabled: no
+
+- name: install all security packages
+  yum: 
+    name: '*'
+    state: latest 
+    security: yes
+    exclude: ansible
+  become: yes

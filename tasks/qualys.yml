@@ -1,0 +1,17 @@
+---
+
+- name: Check installed services
+  service_facts:
+
+- name: Install and configure Qualys agent
+  block:
+
+    - name: install qualys
+      yum:
+        name: qualys-cloud-agent
+        state: present
+
+    - name: configure qualys
+      command: /usr/local/qualys/cloud-agent/bin/qualys-cloud-agent.sh ActivationId={{ qualys_activation_id }} CustomerId=1234567890
+
+  when: "'qualys-cloud-agent.service' not in ansible_facts.services"
